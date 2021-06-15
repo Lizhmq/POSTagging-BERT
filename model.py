@@ -5,8 +5,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from transformers import RobertaModel, BertModel
-from tqdm import tqdm
-from utils import normalize_hiddens
 from torch.autograd import Variable
 
 
@@ -57,18 +55,30 @@ class POSModel(nn.Module):
         return seq_range_expand < seq_length_expand
 
     def predict(self, input_ids, input_mask, sts, ends, lens):
-        pass
-    
+        sequence_output = self.bert(input_ids, input_mask)[0]
+        batch_size, max_len, feat_dim = sequence_output.shape
+        st_shape = sts.shape
+        sts = sts.unsqueeze(-1).expand(list(st_shape) + [768])
+        selected = torch.gather(sequence_output, dim=1, index=sts)
+        logits = self.classifier(selected)
+        preds = torch.argmax(logits, dim=-1)
+        return preds        
+
     def acc(self, input_ids, input_mask, sts, ends, lens, y):
-        pred = self.predict(input_ids, input_mask, sts, ends, lens, y)
-        pass
+        preds = self.predict(input_ids, input_mask, sts, ends, lens, y)
+        # seq_mask = self._sequence_mask(lens)
+        correct = torch.sum((preds == y).float())
+        return correct.sum() / lens.sum()
 
 
     def forward(self, input_ids, input_mask, sts, ends, lens, y=None):
         sequence_output = self.bert(input_ids, input_mask)[0]
         batch_size, max_len, feat_dim = sequence_output.shape
+        st_shape = sts.shape
+        sts = sts.unsqueeze(-1).expand(list(st_shape) + [768])
+        # print(sts.shape)
         selected = torch.gather(sequence_output, dim=1, index=sts)
-        
+        # print(selected.shape)
         # accumulate_hiddens = normalize_hiddens(sequence_output, ses, ends)
         # assert(accumulate_hiddens.shape[1] == ses.shape[0])
         # !!!! accumulate, not average
@@ -77,19 +87,24 @@ class POSModel(nn.Module):
         # logits = self.classifier(accumulate_hiddens)
         
         logits = self.classifier(selected)
+        # print(logits.shape)
 
         if y == None:
             return logits
         else:
-            logits_flat = logits.view(-1, logits.size(-1))
-            log_probs_flat = F.log_softmax(logits_flat)
-            target_flat = y.view(-1, 1)
-            losses_flat = -torch.gather(log_probs_flat, dim=1, index=target_flat)
-            losses = losses_flat.view(*y.size())
-            # mask: (batch, max_len)
-            seq_mask = self._sequence_mask(lens)
-            losses = losses * seq_mask.float()
-            loss = losses.sum() / lens.float().sum()
+            celoss = nn.CrossEntropyLoss(ignore_index=-100)
+            logits = logits.reshape([-1, self.classes])
+            y = y.reshape([-1])
+            loss = celoss(logits, y)
+            # logits_flat = logits.view(-1, logits.size(-1))
+            # log_probs_flat = F.log_softmax(logits_flat)
+            # target_flat = y.view(-1, 1)
+            # losses_flat = -torch.gather(log_probs_flat, dim=1, index=target_flat)
+            # losses = losses_flat.view(*y.size())
+            # # mask: (batch, max_len)
+            # seq_mask = self._sequence_mask(lens)
+            # losses = losses * seq_mask.float()
+            # loss = losses.sum() / lens.float().sum()
             return loss
 
 

@@ -9,7 +9,7 @@ def get_sent(st):
 def get_label(st):
     return [t.split("/")[1] for t in st.split()]
 
-def get_se(sent, block_size=512):
+def get_se(sent, block_size):
     ls = [0] + list(map(len, sent))
     st = np.cumsum(ls)
     st += 1     # [CLS]
@@ -29,7 +29,7 @@ def normalize_hiddens(hiddens, starting_offsets, ending_offsets):
 
 
 
-
-se, end = get_se(['1','22','333'])
-print(se)
-print(normalize_hiddens(torch.tensor([[0,1,2,3,4,5,6,]]), torch.tensor([se]), torch.tensor([end])))
+if __name__ == "__main__":
+    se, end = get_se(['1','22','333'], 300)
+    print(se)
+    print(normalize_hiddens(torch.tensor([[0,1,2,3,4,5,6,]]), torch.tensor([se]), torch.tensor([end])))

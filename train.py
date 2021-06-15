@@ -5,14 +5,14 @@ import random
 
 import numpy as np
 import torch
-from transformers import (AdamW, RobertaTokenizer, get_linear_schedule_with_warmup)
+from transformers import (AdamW, BertTokenizer, get_linear_schedule_with_warmup)
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler)
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from sklearn.metrics import classification_report, accuracy_score
 from torch.utils.tensorboard import SummaryWriter
 from dataset import ClassifierDataset
-from model import , build_model
+from model import POSModel, build_model
 
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
@@ -108,15 +108,17 @@ def train(args, train_dataset, valid_dataset, model, tokenizer, fh, pool):
 
     for idx in range(args.start_epoch, int(args.num_train_epochs)):
         for step, batch in enumerate(train_dataloader):
-            x, y = batch
+            x, y, starts, ends = batch
             x = x.to(args.device)
             y = y.to(args.device)
+            starts = starts.to(args.device)
+            ends = ends.to(args.device)
             x_mask = x.ne(tokenizer.pad_token_id).to(x)
-            
-            model.train()
-            outputs = model(x, x_mask, y)
-            loss = outputs
+            lens = torch.sum(y.ne(-100).int(), dim=1)
 
+            model.train()
+            outputs = model(x, x_mask, starts, ends, lens, y)
+            loss = outputs
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
             if args.gradient_accumulation_steps > 1:
@@ -233,16 +235,22 @@ def valid_acc(args, model, tokenizer, eval_dataset, prefix="", eval_when_trainin
     predicts = []
     golds = []
     for batch in eval_dataloader:
-        x, y = batch
-        golds.extend(y)
+        x, y, starts, ends = batch
         x = x.to(args.device)
         y = y.to(args.device)
+        starts = starts.to(args.device)
+        ends = ends.to(args.device)
         x_mask = x.ne(tokenizer.pad_token_id).to(x)
+        lens = torch.sum(y.ne(-100).int(), dim=1)
+
+        y_mask = y.ne(-100)
 
         with torch.no_grad():
-            output = model(x, x_mask)
-            predicts.extend(torch.argmax(output, dim=1).cpu().numpy())
-
+            outputs = model.predict(x, x_mask, starts, ends, lens)
+            outputs = torch.masked_select(outputs, y_mask)
+            predicts.extend(outputs.cpu().numpy())
+        golds.extend(torch.masked_select(y, y_mask).cpu().numpy())
+            
     print(classification_report(golds, predicts))
     acc = accuracy_score(golds, predicts)
     results = {"accuracy": acc}
@@ -257,6 +265,10 @@ def main():
                         help="The input data path.")
     parser.add_argument("--train_name", default=None, type=str, required=True,
                         help="The train data name.")
+    parser.add_argument("--valid_name", default=None, type=str, required=True,
+                        help="The valid data name.")
+    parser.add_argument("--test_name", default=None, type=str, required=True,
+                        help="The test data name.")                        
     parser.add_argument("--output_dir", default=None, type=str, required=True,
                         help="The output directory where the model predictions and checkpoints will be written.")
 
@@ -383,14 +395,16 @@ def main():
             checkpoint_last, args.start_step))
 
     # Load pre-trained model
-    tokenizer = RobertaTokenizer.from_pretrained(args.pretrain_dir)
+    tokenizer = BertTokenizer.from_pretrained(args.pretrain_dir)
     train_name = args.train_name
-    train_dataset = ClassifierDataset(tokenizer, args, logger, file_name=train_name, block_size=512)
-    valid_dataset = ClassifierDataset(tokenizer, args, logger, file_name="valid.pkl", block_size=512)
-    test_dataset = ClassifierDataset(tokenizer, args, logger, file_name="test.pkl", block_size=512)
+    valid_name = args.valid_name
+    test_name = args.test_name
+    train_dataset = ClassifierDataset(tokenizer, args, logger, file_name=train_name, block_size=args.block_size)
+    valid_dataset = ClassifierDataset(tokenizer, args, logger, file_name=valid_name, map_dict=train_dataset.map_dict, block_size=args.block_size)
+    test_dataset = ClassifierDataset(tokenizer, args, logger, file_name=test_name, map_dict=train_dataset.map_dict, block_size=args.block_size)
 
 
-    model = build_model(args)
+    model = build_model(args, len(train_dataset.map_dict))
     args.vocab_size = len(tokenizer)
     model_parameters = model.parameters()
     num_params = sum([np.prod(p.size()) for p in model_parameters])
