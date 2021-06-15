@@ -56,6 +56,7 @@ class ClassifierDataset(Dataset):
                     padding_length = block_size - len(code_ids)
                     code_ids += [tokenizer.pad_token_id] * padding_length
                     
+                    label = label[:len(start)]
                     y_padding = block_size - len(label)
                     # if idx == 0:
                     #     print(label)

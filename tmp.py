@@ -11,3 +11,5 @@ args.device = torch.device("cuda", 1)
 
 model = build_model(args, 3)
 tokenizer = BertTokenizer.from_pretrained("hfl/chinese-roberta-wwm-ext")
+print(tokenizer.tokenize("测 试 测 试"))
+print(tokenizer.tokenize("测试测试"))

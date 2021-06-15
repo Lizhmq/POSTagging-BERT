@@ -1,8 +1,8 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 DATADIR=./data/
-OUTPUTDIR=./save/1
+OUTPUTDIR=./save/2
 PRETRAINDIR=hfl/chinese-roberta-wwm-ext
-LOGFILE=1.log
+LOGFILE=2.log
 PER_NODE_GPU=1
 PER_GPU_BATCH_TRAIN=16
 PER_GPU_BATCH_EVAL=16
@@ -28,9 +28,9 @@ python  train.py \
         --gradient_accumulation_steps=$GRAD_ACC \
         --num_train_epochs=$EPOCH \
         --logging_steps=50 \
-        --save_steps=50 \
+        --save_steps=800 \
         --overwrite_output_dir \
         --seed=2233 \
-        --train_name train1.pkl \
-        --valid_name valid1.pkl \
-        --test_name test1.pkl
+        --train_name train2.pkl \
+        --valid_name valid2.pkl \
+        --test_name test2.pkl
