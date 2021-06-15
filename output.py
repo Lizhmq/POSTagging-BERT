@@ -74,15 +74,12 @@ def generate_prediction(model, tokenizer, data, label_dic, args):
         # only one sample
         pred = model.predict(x_ids, x_mask, st, en, lens)[0, :].cpu().numpy()
         pred = [inv_map[v] for v in pred[:lens]]
-        print(pred)
         final_preds.append(pred)
-        break
     return final_preds
 
 
 def output_file(preds, data, out_file):
     xs = data["x"]
-    xs = xs[:1]
     lss_cnt = 0
     with open(out_file, "w") as f:
         for idx, (pred, x) in enumerate(zip(preds, xs)):
