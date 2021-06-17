@@ -64,8 +64,11 @@ class ClassifierDataset(Dataset):
                     label += [-100] * y_padding
                     
                     st_padding = block_size - len(start)
-                    start += [start[-1] - 1 for _ in range(st_padding)]
-                    end += [start[-1] - 1 for _ in range(st_padding)]
+                    start += [start[-1] for _ in range(st_padding)]
+                    end += [end[-1] for _ in range(st_padding)]
+                    start = list(map(lambda val: 1 if val < 1 or val >= 300 else val, start))
+                    end = list(map(lambda val: 1 if val < 1 or val >= 300 else val, end))
+                    
                     
                     
                     self.inputs.append(code_ids)
