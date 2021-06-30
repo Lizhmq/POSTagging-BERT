@@ -6,6 +6,9 @@ import torch
 def get_sent(st):
     return [t.split("/")[0] for t in st.split()]
 
+def get_sent_test(st):
+    return [t for t in st.split()]
+
 def get_label(st):
     return [t.split("/")[1] for t in st.split()]
 

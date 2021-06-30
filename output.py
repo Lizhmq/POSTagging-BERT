@@ -9,7 +9,7 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler)
 from tqdm import tqdm
 from dataset import ClassifierDataset
 from model import POSModel, build_model
-from utils import get_sent, get_label, get_se
+from utils import get_sent_test, get_se
 
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
@@ -18,13 +18,13 @@ logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(messa
 logger = logging.getLogger(__name__)
 
 
-def load_file(file, block_size=512):
+def load_file(file, block_size=300):
     with open(file, "r", encoding="utf-16") as f:
         data = f.readlines()
-    data = data[:int(0.1 * len(data))]
+    # data = data[:int(0.1 * len(data))]
     xs, sts, ends = [], [], []
     for line in data:
-        sent = get_sent(line)
+        sent = get_sent_test(line)
         st, end = get_se(sent, block_size)
         if len(sent) == 0:
             continue
@@ -36,6 +36,7 @@ def load_file(file, block_size=512):
 
 
 def generate_prediction(model, tokenizer, data, label_dic, args):
+    model.eval()
     xs = data["x"]
     starts, ends = data["start"], data["end"]
     block_size = args.block_size
@@ -87,7 +88,7 @@ def output_file(preds, data, out_file):
             if len(pred) < curlen:
                 pred += ["Nc"] * (curlen - len(pred))
                 lss_cnt += 1
-            f.writelines("\t".join([x[i] + "/" + pred[i] for i in range(curlen)] + "\n"))
+            f.writelines("\t".join([x[i] + "/" + pred[i] for i in range(curlen)]) + "\n")
     print(f"lss_cnt: {lss_cnt}", flush=True)
     return
 
@@ -97,7 +98,11 @@ def main():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--output_dir", default=None, type=str, required=True)    
+    parser.add_argument("--output_dir", default=None, type=str, required=True)
+    parser.add_argument("--data_dir", default=None, type=str, required=True,       # load for label_map
+                        help="The train data dir.")
+    parser.add_argument("--train_name", default=None, type=str, required=True,       # load for label_map
+                        help="The train data name.")
     parser.add_argument("--test_name", default=None, type=str, required=True,       # load for label_map
                         help="The test data name.")    
     parser.add_argument("--input_file", default=None, type=str, required=True,
@@ -125,12 +130,15 @@ def main():
     out_file = args.output_file
     args.pretrain_dir = model_path
     tokenizer = BertTokenizer.from_pretrained(args.pretrain_dir)
+    train_name = args.train_name
     test_name = args.test_name
+    # train_dataset = ClassifierDataset(tokenizer, args, logger, file_name=train_name, block_size=args.block_size)
     test_dataset = ClassifierDataset(tokenizer, args, logger, file_name=test_name, block_size=args.block_size)
-    print(test_dataset.map_dict)
-    bio_size = len(test_dataset.map_dict)
-    model = build_model(args, bio_size, args.pretrain_dir)
     dic = test_dataset.map_dict
+    print(dic)
+    bio_size = len(dic)
+    model = build_model(args, bio_size, args.pretrain_dir)
+
     
     data = load_file(in_file)
     preds = generate_prediction(model, tokenizer, data, dic, args)
